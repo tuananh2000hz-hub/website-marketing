@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<style>
+  :root { --bg:#0f1115; --card:#181b22; --line:#2a2f3a; --text:#e6e8ec; --mute:#8b93a3;
+          --up:#22c55e; --down:#ef4444; --accent:#3b82f6; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--text); font:14px/1.45 system-ui,-apple-system,Segoe UI,Roboto,sans-serif; }
+  .wrap { max-width:1000px; margin:0 auto; padding:16px; }
+  h1 { font-size:18px; margin:0 0 4px; }
+  .sub { color:var(--mute); font-size:12px; margin-bottom:16px; }
+  .grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(140px,1fr)); gap:10px; margin-bottom:14px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:12px; }
+  .k { color:var(--mute); font-size:12px; }
+  .v { font-size:18px; font-weight:600; margin-top:2px; font-variant-numeric:tabular-nums; }
+  .up { color:var(--up); } .down { color:var(--down); }
+  .acc { margin-bottom:28px; }
+  .head { display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; margin-bottom:10px; }
+  .tag { padding:2px 8px; border-radius:99px; font-size:12px; font-weight:600; background:var(--line); }
+  .tag.SELL { background:rgba(239,68,68,.15); color:var(--down); }
+  .tag.BUY { background:rgba(34,197,94,.15); color:var(--up); }
+  .tbl { overflow-x:auto; }
+  table { width:100%; border-collapse:collapse; font-variant-numeric:tabular-nums; }
+  th, td { padding:7px 8px; border-bottom:1px solid var(--line); text-align:right; white-space:nowrap; }
+  th { color:var(--mute); font-weight:500; font-size:12px; }
+  th:first-child, td:first-child { text-align:left; }
+  h3 { font-size:14px; margin:16px 0 8px; color:var(--mute); font-weight:500; }
+  svg { width:100%; height:140px; display:block; }
+  .login { max-width:280px; margin:20vh auto; text-align:center; }
+  input, button { font:inherit; padding:10px; border-radius:8px; border:1px solid var(--line); background:var(--card); color:var(--text); width:100%; margin-top:8px; }
+  button { background:var(--accent); border:0; cursor:pointer; }
+  .err { color:var(--down); margin-top:8px; }
+</style>
+</head>
+<body>
+<div class="wrap" id="app">
+  <div class="login">
+    <h1>TP Balancer</h1>
+    <input id="pin" type="password" inputmode="numeric" placeholder="Nhập PIN">
+    <button onclick="login()">Xem</button>
+    <div class="err" id="err"></div>
+  </div>
+</div>
+<script>
+let PIN = '';
+try { PIN = localStorage.getItem('tpb_pin') || ''; } catch (e) {}
+if (PIN) load();
+
+function login() {
+  PIN = document.getElementById('pin').value;
+  load();
+}
+
+function load() {
+  google.script.run
+    .withSuccessHandler(d => { try { localStorage.setItem('tpb_pin', PIN); } catch (e) {} render(d); })
+    .withFailureHandler(e => {
+      try { localStorage.removeItem('tpb_pin'); } catch (x) {}
+      const el = document.getElementById('err');
+      if (el) el.textContent = e.message; else location.reload();
+    })
+    .getData(PIN);
+}
+setInterval(() => { if (PIN && document.querySelector('.acc,.empty')) load(); }, 30000);
+
+const f = (v, d = 2) => Number(v).toLocaleString('en-US', { minimumFractionDigits: d, maximumFractionDigits: d });
+const cls = v => (v > 0 ? 'up' : v < 0 ? 'down' : '');
+const card = (k, v, c = '') => `<div class="card"><div class="k">${k}</div><div class="v ${c}">${v}</div></div>`;
+
+function spark(rows) {
+  if (rows.length < 2) return '<div class="k">Chưa đủ dữ liệu equity</div>';
+  const W = 600, H = 140, P = 6;
+  const vals = rows.flatMap(r => [r.eq, r.bal]);
+  const mn = Math.min(...vals), mx = Math.max(...vals), sp = mx - mn || 1;
+  const pts = key => rows.map((r, i) =>
+    `${(P + i * (W - 2 * P) / (rows.length - 1)).toFixed(1)},${(H - P - (r[key] - mn) / sp * (H - 2 * P)).toFixed(1)}`).join(' ');
+  return `<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none">
+    <polyline points="${pts('bal')}" fill="none" stroke="#8b93a3" stroke-width="1.5" stroke-dasharray="4 3"/>
+    <polyline points="${pts('eq')}" fill="none" stroke="#3b82f6" stroke-width="2"/></svg>
+    <div class="k">Xanh: Equity · Xám: Balance · ${f(mn)} – ${f(mx)}</div>`;
+}
+
+function render(d) {
+  const app = document.getElementById('app');
+  if (!d.accounts.length) {
+    app.innerHTML = '<div class="empty card">Chưa nhận được dữ liệu từ EA.</div>';
+    return;
+  }
+  app.innerHTML = '<h1>TP Balancer</h1><div class="sub">Tự làm mới mỗi 30 giây</div>' +
+    d.accounts.map(a => {
+      const pos = a.positions.filter(p => p.cycle === a.cycle);
+      const old = a.positions.filter(p => p.cycle !== a.cycle);
+      const eq = d.equity.filter(r => r.acc === String(a.account) && r.sym === a.symbol);
+      const row = p => `<tr><td>${p.ticket}${p.manual ? ' ✋' : ''}</td><td>#${p.cycle}</td><td>${p.type}</td>
+        <td>${f(p.vol)}</td><td>${p.price}</td><td>${p.sl}</td><td>${p.tp}</td><td class="${cls(p.profit)}">${f(p.profit)}</td></tr>`;
+      const head = '<tr><th>Ticket</th><th>Chu kỳ</th><th>Loại</th><th>Lot</th><th>Giá vào</th><th>SL</th><th>TP</th><th>P/L $</th></tr>';
+      return `<div class="acc">
+        <div class="head"><div><b>${a.symbol}</b> · TK ${a.account} · <span class="tag ${a.dir}">${a.dir}</span>
+          Chu kỳ #${a.cycle} · Bậc ${a.steps}</div>
+          <div class="k">Cập nhật: ${new Date(a.receivedAt).toLocaleString('vi-VN')} · ${a.status}</div></div>
+        <div class="grid">
+          ${card('Balance', f(a.balance))}${card('Equity', f(a.equity))}
+          ${card('Thả nổi chu kỳ', f(a.floating), cls(a.floating))}${card('Tổng lot', f(a.lots))}
+          ${card('Giá TB', a.avg)}${card('Giá hiện tại', a.bid)}
+          ${card('SL tổng', a.sl, 'down')}${card('TP tổng', a.tp, 'up')}
+          ${card('Rủi ro $', f(-a.risk), 'down')}${card('Mục tiêu $ (RR ' + a.rr + ')', f(a.reward), 'up')}
+        </div>
+        <div class="card">${spark(eq)}</div>
+        <h3>Lệnh chu kỳ hiện tại</h3>
+        <div class="card tbl"><table>${head}${pos.map(row).join('') || '<tr><td colspan="8">Không có lệnh</td></tr>'}</table></div>
+        ${old.length ? `<h3>Lệnh còn lại của chu kỳ cũ</h3><div class="card tbl"><table>${head}${old.map(row).join('')}</table></div>` : ''}
+        <h3>Lịch sử chu kỳ (P/L đã chốt)</h3>
+        <div class="card tbl"><table><tr><th>Chu kỳ</th><th>Hướng</th><th>Đã chốt lời</th><th>P/L đã đóng $</th></tr>
+          ${a.history.map(h => `<tr><td>#${h.cycle}</td><td>${h.dir}</td><td>${h.win ? '✔' : ''}</td><td class="${cls(h.pnl)}">${f(h.pnl)}</td></tr>`).join('')}
+        </table></div>
+      </div>`;
+    }).join('');
+}
+</script>
+</body>
+</html>
