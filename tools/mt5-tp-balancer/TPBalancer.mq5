@@ -192,9 +192,10 @@ int Collect(Pos &a[])
 //| Chu ky moi khi:                                                  |
 //|  - chua co lenh nao cua chu ky hien tai dang mo, HOAC            |
 //|  - lenh moi nguoc chieu chu ky hien tai, HOAC                    |
-//|  - lenh moi = lot mo dau (0.01) VA chu ky hien tai da chot loi,  |
+//|  - lenh moi = lot mo dau (0.01) VA chuoi hien tai dang DUONG,    |
+//|    (chuoi dang am -> 0.01 la chia vol, van cung chuoi),          |
 //|  - hoac anh bam nut CHU KY MOI                                   |
-//| Lenh 0.01 tach vol giua chuoi (chua chot loi) -> van cung chuoi  |
+//| Chu ky cu khi da sang chu ky moi: EA khong sua SL/TP nua         |
 //+------------------------------------------------------------------+
 void AssignCycles(Pos &a[])
   {
@@ -209,14 +210,18 @@ void AssignCycles(Pos &a[])
       if(!isNew)
         {
          int openCur = 0;
+         double fl = 0;   // lai/lo tha noi cua chuoi hien tai (khong tinh lenh moi chua gan)
          for(int j = 0; j < n; j++)
             if(a[j].cycle == cur)
+              {
                openCur++;
-         bool won      = GV(CK(cur, "win")) > 0;
+               fl += a[j].profit;
+              }
          bool startLot = a[i].vol <= InpStartLot + 1e-8;
+         // 0.01 moi: chuoi dang AM -> chia vol vao chuoi cu; chuoi dang DUONG -> chu ky moi
          isNew = (openCur == 0)
               || (a[i].type != (int)GV(CK(cur, "dir")))
-              || (startLot && won)
+              || (startLot && fl >= 0)
               || (GV("force_new") > 0);
         }
 

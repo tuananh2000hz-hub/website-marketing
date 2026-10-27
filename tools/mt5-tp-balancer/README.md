@@ -9,10 +9,10 @@ EA quản lý **lệnh vào tay** (Magic = 0, không comment) trên chart đang 
 - **Chu kỳ đã có lệnh chốt lời:** chu kỳ bị đóng băng, EA không chỉnh SL/TP nữa.
 - **Chu kỳ mới** bắt đầu khi có một trong các điều kiện sau:
   1. Không còn lệnh nào của chu kỳ cũ đang mở.
-  2. Vào lệnh **0.01** (InpStartLot) **sau khi chu kỳ cũ đã chốt lời**.
+  2. Vào lệnh **0.01** (InpStartLot) khi **chuỗi hiện tại đang dương** (lãi thả nổi ≥ 0). Anh vẫn gồng chuỗi cũ, EA chỉ tính SL/TP cho chu kỳ mới.
   3. Vào lệnh ngược chiều.
   4. Bấm nút **CHU KỲ MỚI** trên chart.
-- **Lệnh 0.01 vào giữa chuỗi khi chưa chốt lời** (ví dụ chia 0.03 thành 0.01 + 0.02) vẫn được tính chung chuỗi.
+- **Lệnh 0.01 vào khi chuỗi đang âm** được hiểu là chia vol (ví dụ chia 0.03 thành 0.01 + 0.02), vẫn tính chung chuỗi.
 - **EA nhận nhầm lệnh là chu kỳ mới:** bấm **GỘP LỆNH CUỐI** để đưa lệnh vừa vào về chu kỳ trước.
 - Trạng thái lưu trong Global Variables, nên tắt hoặc mở lại MT5 không bị mất.
 
