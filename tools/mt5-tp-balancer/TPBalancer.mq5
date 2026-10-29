@@ -236,6 +236,12 @@ void AssignCycles(Pos &a[])
          GS("force_new", 0);
          PrintFormat("TPB: CHU KY MOI #%d bat dau tu lenh %I64u (%.2f lot)", cur, a[i].ticket, a[i].vol);
         }
+      else if(GV(CK(cur, "win")) > 0)
+        {
+         // lenh moi khop tiep noi chuoi da chot loi -> mo bang, tinh lai SL/TP
+         GS(CK(cur, "win"), 0);
+         PrintFormat("TPB: chu ky #%d tiep tuc voi lenh %I64u, tinh lai TP", cur, a[i].ticket);
+        }
       GS(TK(a[i].ticket, "t"), cur);
       a[i].cycle = cur;
      }
