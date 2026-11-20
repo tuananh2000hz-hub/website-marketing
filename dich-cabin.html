@@ -90,7 +90,7 @@ $('gloss').value=store.get('gloss')||DEF_GLOSS;
 $('pair').value=store.get('pair')||$('pair').value;
 $('engine').value=store.get('engine')||'free';
 $('save').onclick=()=>{store.set('engine',$('engine').value);store.set('key',$('key').value.trim());store.set('model',$('model').value.trim());store.set('gloss',$('gloss').value);$('cfg').open=false;st('Đã lưu')};
-$('pair').onchange=()=>{store.set('pair',$('pair').value);if(running){stop();start()}};
+$('pair').onchange=()=>{store.set('pair',$('pair').value);if(running){stop();if(!dict)start();else st('Đã đổi ngôn ngữ, bấm Bắt đầu nghe lại')}};
 $('clr').onclick=()=>{$('log').innerHTML='';hist=[]};
 $('big').onclick=()=>document.body.classList.toggle('big');
 $('dl').onclick=()=>{
@@ -102,12 +102,30 @@ function st(t){$('status').textContent=t}
 
 const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
 let rec,running=false,hist=[],interimEl=null;
-if(!SR){st('Trình duyệt không hỗ trợ nhận giọng nói. Hãy dùng Chrome hoặc Edge.');$('go').disabled=true}
+let dict=null,usingDict=false;
+(async()=>{
+  try{dict=await claude.use('dictation')}catch(e){}
+  if(dict){
+    dict.onPartial(({text})=>{if(text)showInterim(text)});
+    dict.onFinal(({text})=>{clearInterim();const t=text.trim();if(t)translate(t)});
+    dict.onState(({state,reason})=>{
+      if(state==='listening')st('Đang nghe (mic của Claude)...');
+      if(state==='idle'&&usingDict&&running){stop();if(reason&&reason!=='stopped')st('Đã dừng: '+reason)}
+    });
+  }else if(!SR){st('Trình duyệt không hỗ trợ nhận giọng nói. Hãy dùng Chrome hoặc Edge.')}
+})();
 
 function pair(){const [lang,s,d,dn]=$('pair').value.split('|');return{lang,s,d,dn}}
 
 function start(){
   const p=pair();
+  if(dict){
+    usingDict=true;running=true;
+    $('go').textContent='■ Dừng';$('go').classList.add('rec');st('Đang mở mic...');
+    dict.start({language:p.lang.split('-')[0]}).catch(e=>{stop();st('Lỗi mic: '+(e&&e.code||e))});
+    return;
+  }
+  if(!SR){st('Trình duyệt không hỗ trợ nhận giọng nói. Hãy dùng Chrome hoặc Edge.');return}
   rec=new SR();rec.lang=p.lang;rec.continuous=true;rec.interimResults=true;
   rec.onresult=e=>{
     let interim='';
@@ -123,7 +141,7 @@ function start(){
   rec.start();running=true;
   $('go').textContent='■ Dừng';$('go').classList.add('rec');st('Đang nghe ('+p.lang+')...');
 }
-function stop(){running=false;try{rec.stop()}catch(e){}$('go').textContent='● Bắt đầu nghe';$('go').classList.remove('rec');st('Đã dừng')}
+function stop(){running=false;if(usingDict){usingDict=false;try{dict.stop()}catch(e){}}try{rec&&rec.stop()}catch(e){}$('go').textContent='● Bắt đầu nghe';$('go').classList.remove('rec');st('Đã dừng')}
 $('go').onclick=()=>running?stop():start();
 
 function showInterim(t){
