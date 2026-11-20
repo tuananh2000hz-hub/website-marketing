@@ -1,0 +1,160 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Dịch Cabin Trực Tiếp</title>
+<style>
+  :root{--bg:#0f172a;--card:#1e293b;--tx:#e2e8f0;--mut:#94a3b8;--ac:#38bdf8;--ok:#22c55e;--bad:#ef4444}
+  *{box-sizing:border-box}
+  body{margin:0;font-family:system-ui,sans-serif;background:var(--bg);color:var(--tx)}
+  header{padding:12px 16px;display:flex;flex-wrap:wrap;gap:8px;align-items:center;background:var(--card)}
+  h1{font-size:18px;margin:0 12px 0 0}
+  select,button,input,textarea{font:inherit;padding:8px 10px;border-radius:8px;border:1px solid #334155;background:#0b1220;color:var(--tx)}
+  button{cursor:pointer;background:var(--ac);color:#04121f;border:0;font-weight:600}
+  button.rec{background:var(--bad);color:#fff}
+  button.sec{background:#334155;color:var(--tx)}
+  main{padding:16px;max-width:1100px;margin:auto}
+  #log{display:flex;flex-direction:column;gap:10px;min-height:50vh}
+  .row{display:grid;grid-template-columns:1fr 1fr;gap:10px;background:var(--card);padding:12px;border-radius:10px}
+  .src{color:var(--mut)}
+  .dst{font-size:1.2em;font-weight:600}
+  .interim{opacity:.6;font-style:italic}
+  #status{margin-left:auto;font-size:13px;color:var(--mut)}
+  details{margin:12px 0;background:var(--card);padding:10px 14px;border-radius:10px}
+  textarea{width:100%;min-height:110px}
+  .big #log .dst{font-size:1.8em}
+  @media(max-width:700px){.row{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<header>
+  <h1>🎧 Dịch Cabin</h1>
+  <select id="pair">
+    <option value="vi-VN|vi|en|Tiếng Anh">Việt → Anh</option>
+    <option value="en-US|en|vi|Tiếng Việt">Anh → Việt</option>
+    <option value="vi-VN|vi|zh|Tiếng Trung giản thể">Việt → Trung</option>
+    <option value="zh-CN|zh|vi|Tiếng Việt">Trung → Việt</option>
+    <option value="vi-VN|vi|ko|Tiếng Hàn">Việt → Hàn</option>
+    <option value="ko-KR|ko|vi|Tiếng Việt">Hàn → Việt</option>
+    <option value="vi-VN|vi|ja|Tiếng Nhật">Việt → Nhật</option>
+    <option value="ja-JP|ja|vi|Tiếng Việt">Nhật → Việt</option>
+  </select>
+  <button id="go">● Bắt đầu nghe</button>
+  <button id="clr" class="sec">Xoá</button>
+  <button id="big" class="sec">Chữ to</button>
+  <button id="dl" class="sec">Tải bản dịch</button>
+  <span id="status">Sẵn sàng</span>
+</header>
+<main>
+  <details id="cfg">
+    <summary>⚙️ Cài đặt: API key &amp; bảng thuật ngữ</summary>
+    <p>Anthropic API key (lưu trong trình duyệt của anh, không gửi đi đâu ngoài api.anthropic.com):</p>
+    <input id="key" type="password" placeholder="sk-ant-..." style="width:100%">
+    <p>Model: <input id="model" value="claude-haiku-5-5" style="width:260px"></p>
+    <p>Bảng thuật ngữ (mỗi dòng: <code>nguồn = đích</code>). Có ngữ cảnh ngành thiết bị vệ sinh:</p>
+    <textarea id="gloss"></textarea>
+    <p><button id="save">Lưu</button></p>
+  </details>
+  <div id="log"></div>
+</main>
+<script>
+const $=id=>document.getElementById(id);
+const DEF_GLOSS=`bồn cầu = toilet / water closet
+bồn cầu thông minh = smart toilet
+bồn cầu một khối = one-piece toilet
+bồn cầu hai khối = two-piece toilet
+bàn cầu treo tường = wall-hung toilet
+nắp bồn cầu êm = soft-close seat cover
+lavabo = washbasin
+chậu rửa mặt = washbasin
+sen cây = shower column
+sen tắm = shower set
+vòi sen = shower head
+vòi lavabo = basin faucet
+bồn tắm = bathtub
+bidet = bidet
+phụ kiện phòng tắm = bathroom accessories
+men sứ = ceramic glaze
+xả xoáy = vortex flushing
+tiết kiệm nước = water saving
+đại lý = distributor
+báo giá = quotation
+chiết khấu = discount
+bảo hành = warranty`;
+const store={get:k=>{try{return localStorage.getItem(k)}catch(e){return null}},set:(k,v)=>{try{localStorage.setItem(k,v)}catch(e){}}};
+$('key').value=store.get('key')||'';
+$('model').value=store.get('model')||'claude-haiku-5-5';
+$('gloss').value=store.get('gloss')||DEF_GLOSS;
+$('pair').value=store.get('pair')||$('pair').value;
+if(!$('key').value)$('cfg').open=true;
+$('save').onclick=()=>{store.set('key',$('key').value.trim());store.set('model',$('model').value.trim());store.set('gloss',$('gloss').value);$('cfg').open=false;st('Đã lưu')};
+$('pair').onchange=()=>{store.set('pair',$('pair').value);if(running){stop();start()}};
+$('clr').onclick=()=>{$('log').innerHTML='';hist=[]};
+$('big').onclick=()=>document.body.classList.toggle('big');
+$('dl').onclick=()=>{
+  const t=hist.map(h=>h.src+'\n'+h.dst).join('\n\n');
+  const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([t],{type:'text/plain;charset=utf-8'}));
+  a.download='ban-dich-'+Date.now()+'.txt';a.click();
+};
+function st(t){$('status').textContent=t}
+
+const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
+let rec,running=false,hist=[],interimEl=null;
+if(!SR){st('Trình duyệt không hỗ trợ nhận giọng nói. Hãy dùng Chrome hoặc Edge.');$('go').disabled=true}
+
+function pair(){const [lang,s,d,dn]=$('pair').value.split('|');return{lang,s,d,dn}}
+
+function start(){
+  const p=pair();
+  rec=new SR();rec.lang=p.lang;rec.continuous=true;rec.interimResults=true;
+  rec.onresult=e=>{
+    let interim='';
+    for(let i=e.resultIndex;i<e.results.length;i++){
+      const r=e.results[i],t=r[0].transcript.trim();
+      if(r.isFinal){clearInterim();if(t)translate(t)}
+      else interim+=t+' ';
+    }
+    if(interim)showInterim(interim);
+  };
+  rec.onerror=e=>{st('Lỗi mic: '+e.error);if(e.error==='not-allowed'||e.error==='service-not-allowed')stop()};
+  rec.onend=()=>{if(running){try{rec.start()}catch(e){}}};
+  rec.start();running=true;
+  $('go').textContent='■ Dừng';$('go').classList.add('rec');st('Đang nghe ('+p.lang+')...');
+}
+function stop(){running=false;try{rec.stop()}catch(e){}$('go').textContent='● Bắt đầu nghe';$('go').classList.remove('rec');st('Đã dừng')}
+$('go').onclick=()=>running?stop():start();
+
+function showInterim(t){
+  if(!interimEl){interimEl=document.createElement('div');interimEl.className='row interim';$('log').appendChild(interimEl)}
+  interimEl.innerHTML='<div class="src"></div><div></div>';interimEl.firstChild.textContent=t;scroll();
+}
+function clearInterim(){if(interimEl){interimEl.remove();interimEl=null}}
+function scroll(){window.scrollTo(0,document.body.scrollHeight)}
+
+async function translate(text){
+  const p=pair(),key=$('key').value.trim();
+  const row=document.createElement('div');row.className='row';
+  row.innerHTML='<div class="src"></div><div class="dst">…</div>';
+  row.firstChild.textContent=text;$('log').appendChild(row);scroll();
+  const item={src:text,dst:''};hist.push(item);
+  if(!key){row.lastChild.textContent='⚠ Chưa nhập API key';$('cfg').open=true;return}
+  const context=hist.slice(-6,-1).map(h=>h.src).join(' ');
+  const system=`Bạn là phiên dịch viên cabin chuyên nghiệp, ngành thiết bị vệ sinh và phòng tắm. Dịch câu nói sang ${p.dn}. Chỉ trả về bản dịch, không giải thích, không thêm ghi chú. Dịch tự nhiên, ngắn gọn, đúng thuật ngữ. Văn bản nguồn là kết quả nhận dạng giọng nói nên có thể sai chính tả, hãy suy luận theo ngữ cảnh.\nBảng thuật ngữ ưu tiên:\n${$('gloss').value}`;
+  try{
+    const r=await fetch('https://api.anthropic.com/v1/messages',{
+      method:'POST',
+      headers:{'content-type':'application/json','x-api-key':key,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
+      body:JSON.stringify({model:$('model').value.trim(),max_tokens:600,system,
+        messages:[{role:'user',content:(context?`Ngữ cảnh trước đó: ${context}\n\n`:'')+`Dịch câu này:\n${text}`}]})
+    });
+    const j=await r.json();
+    if(!r.ok)throw new Error(j.error&&j.error.message||r.status);
+    item.dst=j.content.map(c=>c.text||'').join('').trim();
+    row.lastChild.textContent=item.dst;
+  }catch(e){row.lastChild.textContent='⚠ '+e.message}
+  scroll();
+}
+</script>
+</body>
+</html>
