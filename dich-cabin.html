@@ -49,7 +49,8 @@
 <main>
   <details id="cfg">
     <summary>⚙️ Cài đặt: API key &amp; bảng thuật ngữ</summary>
-    <p>Anthropic API key (lưu trong trình duyệt của anh, không gửi đi đâu ngoài api.anthropic.com):</p>
+    <p>Chế độ dịch: <select id="engine"><option value="free">Miễn phí (Chrome tích hợp / MyMemory)</option><option value="claude">Claude (chính xác hơn, cần API key)</option></select></p>
+    <p>Anthropic API key (chỉ cần cho chế độ Claude; lưu trong trình duyệt của anh, không gửi đi đâu ngoài api.anthropic.com):</p>
     <input id="key" type="password" placeholder="sk-ant-..." style="width:100%">
     <p>Model: <input id="model" value="claude-haiku-5-5" style="width:260px"></p>
     <p>Bảng thuật ngữ (mỗi dòng: <code>nguồn = đích</code>). Có ngữ cảnh ngành thiết bị vệ sinh:</p>
@@ -87,8 +88,8 @@ $('key').value=store.get('key')||'';
 $('model').value=store.get('model')||'claude-haiku-5-5';
 $('gloss').value=store.get('gloss')||DEF_GLOSS;
 $('pair').value=store.get('pair')||$('pair').value;
-if(!$('key').value)$('cfg').open=true;
-$('save').onclick=()=>{store.set('key',$('key').value.trim());store.set('model',$('model').value.trim());store.set('gloss',$('gloss').value);$('cfg').open=false;st('Đã lưu')};
+$('engine').value=store.get('engine')||'free';
+$('save').onclick=()=>{store.set('engine',$('engine').value);store.set('key',$('key').value.trim());store.set('model',$('model').value.trim());store.set('gloss',$('gloss').value);$('cfg').open=false;st('Đã lưu')};
 $('pair').onchange=()=>{store.set('pair',$('pair').value);if(running){stop();start()}};
 $('clr').onclick=()=>{$('log').innerHTML='';hist=[]};
 $('big').onclick=()=>document.body.classList.toggle('big');
@@ -132,13 +133,34 @@ function showInterim(t){
 function clearInterim(){if(interimEl){interimEl.remove();interimEl=null}}
 function scroll(){window.scrollTo(0,document.body.scrollHeight)}
 
+const tcache={};
+async function freeTranslate(text,p){
+  if('Translator' in self){
+    try{
+      const k=p.s+p.d;
+      if(!tcache[k]){
+        const av=await Translator.availability({sourceLanguage:p.s,targetLanguage:p.d});
+        if(av!=='unavailable')tcache[k]=await Translator.create({sourceLanguage:p.s,targetLanguage:p.d});
+      }
+      if(tcache[k])return await tcache[k].translate(text);
+    }catch(e){}
+  }
+  const r=await fetch('https://api.mymemory.translated.net/get?q='+encodeURIComponent(text)+'&langpair='+p.s+'|'+(p.d==='zh'?'zh-CN':p.d));
+  const j=await r.json();
+  return j.responseData.translatedText;
+}
+
 async function translate(text){
   const p=pair(),key=$('key').value.trim();
   const row=document.createElement('div');row.className='row';
   row.innerHTML='<div class="src"></div><div class="dst">…</div>';
   row.firstChild.textContent=text;$('log').appendChild(row);scroll();
   const item={src:text,dst:''};hist.push(item);
-  if(!key){row.lastChild.textContent='⚠ Chưa nhập API key';$('cfg').open=true;return}
+  if($('engine').value==='free'){
+    try{item.dst=await freeTranslate(text,p);row.lastChild.textContent=item.dst}catch(e){row.lastChild.textContent='⚠ '+e.message}
+    scroll();return;
+  }
+  if(!key){row.lastChild.textContent='⚠ Chưa nhập API key (hoặc chuyển sang chế độ Miễn phí)';$('cfg').open=true;return}
   const context=hist.slice(-6,-1).map(h=>h.src).join(' ');
   const system=`Bạn là phiên dịch viên cabin chuyên nghiệp, ngành thiết bị vệ sinh và phòng tắm. Dịch câu nói sang ${p.dn}. Chỉ trả về bản dịch, không giải thích, không thêm ghi chú. Dịch tự nhiên, ngắn gọn, đúng thuật ngữ. Văn bản nguồn là kết quả nhận dạng giọng nói nên có thể sai chính tả, hãy suy luận theo ngữ cảnh.\nBảng thuật ngữ ưu tiên:\n${$('gloss').value}`;
   try{
